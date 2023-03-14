@@ -1,0 +1,129 @@
+const Movie = require("../models/movie");
+
+//! create
+
+exports.create = async (req, res) => {
+  const { name, category, description } = req.body;
+  const movie = Movie({ name, category, description });
+
+  try {
+    await movie.save();
+
+    res.json({
+      success: true,
+      data: movie,
+    });
+  } catch (e) {
+    res.status(500).json({
+      message: "Something went wrong!",
+    });
+  }
+};
+
+//! find by id
+
+exports.find = async (req, res) => {
+  const { id } = req.params;
+  const movie = await Movie.findById(req.params.id);
+
+  if (!movie) return res.status(404).send();
+
+  res.json({
+    success: true,
+    data: movie,
+  });
+};
+
+//! update by id
+exports.update = async (req, res) => {
+  const { id } = req.params;
+  const { name, category, description } = req.body;
+  await Movie.updateOne(
+    { _id: id },
+    {
+      $set: {
+        name,
+        category,
+        description,
+      },
+    }
+  );
+  res.json({
+    success: true,
+  });
+};
+
+//! delete by id
+exports.delete = async (req, res) => {
+  const { id } = req.params;
+  await Movie.deleteOne({ _id: id });
+  res.json({
+    success: true,
+  });
+};
+
+//! list
+exports.list = async (req, res) => {
+  //!pagination
+  const page = req.query?.page || 1; // optional chaining: ?.
+  const limit = 20;
+  const skip = (page - 1) * limit;
+
+  const movies = await Movie.find().select("-reviews").skip(skip).limit(limit);
+  const total = await Movie.countDocuments();
+  const pages = Math.ceil(total / limit);
+  res.json({
+    success: true,
+    pages,
+    data: movies,
+  });
+};
+
+//! get reviews by id of movie
+exports.reviews = async (req, res) => {
+  const {id} = req.params
+  const movie = await Movie.findById(id).select('-reviews._id').populate('reviews.user', 'name') //! show just the name of user and don't show his id
+
+  if (!movie) return res.status(404).send()
+  res.json({
+    success: true,
+    data: movie.reviews
+  })
+}
+
+//! add review from movie
+exports.addReviews = async (req, res) => {
+  const { id } = req.params;
+  const { comment, rate } = req.body;
+  const movie = await Movie.findById(id);
+
+  if (!movie) return res.status(404).send();
+  const isRated = movie.reviews.findIndex((m) => m.user == req.userId);
+
+  if (isRated > -1) return res.status(404).send();
+  message: "Review has been already added";
+
+  const totalRate = movie.reviews.reduce((sum, review) => sum + review.rate, 0);
+  const finalRate = (totalRate + rate) / (movie.reviews.length + 1);
+  await Movie.updateOne(
+    {
+      _id: id,
+    },
+    {
+      $push: {
+        reviews: {
+          user: req.userId,
+          comment,
+          rate,
+        },
+      },
+      $set: {
+        rate: finalRate,
+      },
+    }
+  );
+
+  res.status(201).json({
+    success: true,
+  });
+};
